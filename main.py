@@ -113,19 +113,14 @@ def addDatabase(bookInfo: dict) -> None:
     """
     # データベースがあるかないか調べます。なかったら新規作成して、本のデータを格納します。
     if not os.path.isfile("bookInfoAutomation.csv"):
-        df = pd.DataFrame(bookInfo, index=[0])
+        df = pd.DataFrame(columns=bookInfo.keys())
         df.to_csv("bookInfoAutomation.csv", encoding="UTF-8")
-    else:
-        df = pd.read_csv("bookInfoAutomation.csv")
-        add_df = pd.DataFrame(bookInfo, index=[0])
-        df = pd.concat([df, add_df])
-        print(df)
-        df.to_csv("bookInfoAutomation.csv", encoding="UTF-8")
+    df = pd.read_csv("bookInfoAutomation.csv", index_col=0)
+    df_add = pd.DataFrame(bookInfo, index=[0])
+    df =pd.concat([df, df_add], ignore_index=True)
+    df.to_csv("bookInfoAutomation.csv", encoding="UTF-8")
 
     
-
-
-
 
 """
 if __name__ == "__main__":
@@ -134,8 +129,16 @@ if __name__ == "__main__":
     ISBN, detailedCode = bookJAN["ISBN"], bookJAN["detailedCode"]
     getInfo(ISBN)
 """
-
+"""
 if __name__ == "__main__":
-    bookInfo = getInfo("9784063600568")
+    peat = [
+        "9784063600568",
+        "9784088900827",
+        "9784065274859",
+        "9784065193396"
+    ]
+    
+    bookInfo = getInfo(peat[0])
     print(bookInfo)
     addDatabase(bookInfo)
+"""
