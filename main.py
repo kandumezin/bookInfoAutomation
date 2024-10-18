@@ -12,19 +12,15 @@ def readCode(pdf: str, page_num: int) -> dict:
     """
     指定されたpathにあるpdfファイルの、指定された一つのページ（引数: page_num）から、
     書籍JANコードを取り出し、ISBNとdetailCodeが内包された辞書型（{ISBN: , detailedCode:}）にして返します。
-    
     Args:
         pdf (str): PDFファイルへのパス。
         page_num (int): 抽出対象のページ番号。
-
     Returns:
         dict: ISBNと詳細コードを格納した辞書。フォーマットは以下の通り:
             {
                 "ISBN": str,         # ISBNコード
                 "detailedCode": str   # 図書分類コードおよび図書本体価格を含むコード
             }
-
-            
     書籍JANコード は、２つのバーコードのセットで構成されています。
     一段目には、ISBNが内包されています。978から始まる整数の列です。
     二段目には、図書分類コードおよび、図書本体価格が内包されています（便宜上、"detailedCode"と表記します）。192から始まる整数の列です。
@@ -70,14 +66,12 @@ def getInfo(ISBN: str) -> dict:
     """
     ISBN(str)から本の情報(dict)を取得します。
     国立国会図書館が提供する、「外部提供インターフェース」の「OpenSearch」をもちいて、取得しています。
-
     Args:
         ISBN(str):本のISBN
-
     Returns:
         bookInfo(dict):本の情報が詰まった辞書
-
     """
+
     # 国立国会図書館OpenSearchのエンドポイントURLと、与えられたISBNをもちいて、
     # HTTPリクエストの クエリ付き URL を作成します
     endPointUrl = "https://ndlsearch.ndl.go.jp/api/opensearch?isbn="
@@ -93,10 +87,12 @@ def getInfo(ISBN: str) -> dict:
     # 帰ってきた XMLデータ を、dict に変換します。
     root = ET.fromstring(res.text)
     xml_bookInfo = root.find(".//item")
+
     bookInfo = {}
+    bookInfo["ISBN"] = ISBN
     for i in xml_bookInfo:
-        bookInfo[f"{i.tag}"] = i.text
-    
+        bookInfo[f"{i.tag + str(i.attrib)}"] = i.text
+
     return bookInfo
 
 
@@ -104,18 +100,24 @@ def addDatabase(bookInfo: dict) -> None:
     """
     本の情報(dict)を、データベースに格納します。
     データベースがなかったなら、新しく作成（ファイル名:"bookInfoAutomation.csv"）されます
-
     Args:
         bookInfo(dict): 本の情報が詰まった辞書
-
     return:
         None
     """
-    # データベースがあるかないか調べます。なかったら新規作成して、本のデータを格納します。
+    
+    # データベースがあるかないか調べます。なかったら新規作成します
     if not os.path.isfile("bookInfoAutomation.csv"):
         df = pd.DataFrame(columns=bookInfo.keys())
         df.to_csv("bookInfoAutomation.csv", encoding="UTF-8")
+    
+    # データベースを読み込んで、同一の ISBN をもつ行があるか検索します。そしてあった（重複）なら、データを追加しません
     df = pd.read_csv("bookInfoAutomation.csv", index_col=0)
+    result = (df['ISBN'] == int(bookInfo["ISBN"]))
+    if result.sum().sum() > 0:
+        raise ValueError("すでに登録されています")
+    
+    # 重複していなければ、データベースにデータを追加します
     df_add = pd.DataFrame(bookInfo, index=[0])
     df =pd.concat([df, df_add], ignore_index=True)
     df.to_csv("bookInfoAutomation.csv", encoding="UTF-8")
@@ -129,7 +131,7 @@ if __name__ == "__main__":
     ISBN, detailedCode = bookJAN["ISBN"], bookJAN["detailedCode"]
     getInfo(ISBN)
 """
-"""
+
 if __name__ == "__main__":
     peat = [
         "9784063600568",
@@ -138,7 +140,6 @@ if __name__ == "__main__":
         "9784065193396"
     ]
     
-    bookInfo = getInfo(peat[0])
+    bookInfo = getInfo(peat[1])
     print(bookInfo)
     addDatabase(bookInfo)
-"""
