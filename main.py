@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 
 
+
 def readCode(pdf: str, page_num: int) -> dict:
     """
     指定されたpathにあるpdfファイルの、指定された一つのページ（引数: page_num）から、
@@ -122,17 +123,53 @@ def addDatabase(bookInfo: dict) -> None:
     df =pd.concat([df, df_add], ignore_index=True)
     df.to_csv("bookInfoAutomation.csv", encoding="UTF-8")
 
+
+def bookRename(filePath: str, bookInfo: dict) -> None:
+    """
+    与えられた bookInfo をもとに、与えられたファイル名を変更します。
+    ファイル名の例:「本のタイトル_ISBN.pdf」
+    Args:
+        filePath(str): pdf ファイルの path
+        bookInfo(dict): getInfo で取得した本の情報。IBSNと本のタイトルが含まれています。
+    Returns:
+        None: ファイル名を変えておわりです。
+    Raises:
+        工事中
+
+    """
+    # ファイル名を作成します。getCode関数で生成された dict をもちいて、「本のタイトル_ISBN.pdf」
+    # となるようなファイル名を作ります。
+    title = bookInfo["title{}"]
+    ISBN = bookInfo["ISBN"]
+    name = title + "_" + ISBN + ".pdf"
     
+    # 作ったファイル名が windows の禁止文字を含んでいないか確認し、禁止文字を置き換えます。
+    new_name = ""
+    list = ["\\", "/", ":", "*", "?", "\"", "<", ">", "|"]
+    parm = False
 
-"""
-if __name__ == "__main__":
-    pf = "test-comic.pdf"
-    bookJAN = readCode(pf, 3)
-    ISBN, detailedCode = bookJAN["ISBN"], bookJAN["detailedCode"]
-    getInfo(ISBN)
-"""
+    for i in name:
+        for j in list:
+            if i == j:
+                new_name = new_name + "🦶"
+                parm = True
+                break
+            else:
+                pass
+        if new_name == "":
+            new_name = new_name + i
+        elif parm:
+            parm = False
+            pass
+        else:
+            new_name = new_name + i
 
-if __name__ == "__main__":
+    # ファイル名を変更します。
+    os.rename(filePath, new_name)
+
+
+
+def main():
     peat = [
         "9784063600568",
         "9784088900827",
@@ -140,6 +177,11 @@ if __name__ == "__main__":
         "9784065193396"
     ]
     
-    bookInfo = getInfo(peat[1])
-    print(bookInfo)
-    addDatabase(bookInfo)
+    f = "test-comic.pdf"
+    ISBN = readCode(f, 3)["ISBN"]
+    bookInfo = getInfo(ISBN)
+    bookRename(f, bookInfo=bookInfo)
+
+
+if __name__ == "__main__":
+    main()
