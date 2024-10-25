@@ -6,6 +6,7 @@ import os
 import requests
 import xml.etree.ElementTree as ET
 import pandas as pd
+import re
 
 
 
@@ -22,6 +23,8 @@ def readCode(pdf: str, page_num: int) -> dict:
                 "ISBN": str,         # ISBNコード
                 "detailedCode": str   # 図書分類コードおよび図書本体価格を含むコード
             }
+    Raises:
+        ValueError("ページ内にバーコードがありません")
     書籍JANコード は、２つのバーコードのセットで構成されています。
     一段目には、ISBNが内包されています。978から始まる整数の列です。
     二段目には、図書分類コードおよび、図書本体価格が内包されています（便宜上、"detailedCode"と表記します）。192から始まる整数の列です。
@@ -141,28 +144,12 @@ def bookRename(filePath: str, bookInfo: dict) -> None:
     # となるようなファイル名を作ります。
     title = bookInfo["title{}"]
     ISBN = bookInfo["ISBN"]
-    name = title + "_" + ISBN + ".pdf"
-    
-    # 作ったファイル名が windows の禁止文字を含んでいないか確認し、禁止文字を置き換えます。
-    new_name = ""
-    list = ["\\", "/", ":", "*", "?", "\"", "<", ">", "|"]
-    parm = False
+    f_name = title + "_" + ISBN + ".pdf"
 
-    for i in name:
-        for j in list:
-            if i == j:
-                new_name = new_name + "🦶"
-                parm = True
-                break
-            else:
-                pass
-        if new_name == "":
-            new_name = new_name + i
-        elif parm:
-            parm = False
-            pass
-        else:
-            new_name = new_name + i
+
+    # 作ったファイル名が windows の禁止文字を含んでいないか確認し、禁止文字を置き換えます。
+    replace_with = "⦸"
+    new_name = re.sub(r'[\/:*?"<>|]', replace_with, f_name)
 
     # ファイル名を変更します。
     os.rename(filePath, new_name)
@@ -181,7 +168,6 @@ def main():
     ISBN = readCode(f, 3)["ISBN"]
     bookInfo = getInfo(ISBN)
     bookRename(f, bookInfo=bookInfo)
-
-
+    
 if __name__ == "__main__":
     main()
