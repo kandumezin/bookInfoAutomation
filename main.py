@@ -44,8 +44,11 @@ def readCode(pdfPath: str, numberOfPages: int, startingPoint: Literal["end", "fi
         二段目には、図書分類コードおよび、図書本体価格が内包されています（便宜上、"detailedCode"と表記します）。192から始まる整数の列です。
         接頭辞である978と192を用いて、ISBNとdetailCodeを見分けています。
     """
+    # 帰り値の、書籍JANコードを入れる辞書を定義します。
+    bookJAN = {}
+    
     # 与えられた　Path から、PDF を読み込みます。
-    if os.path.splitext(pdfPath)(1) != ".pdf":
+    if os.path.splitext(pdfPath)[1] != ".pdf":
         raise ValueError(f"{os.path.basename(pdfPath)} は、PDF ではありません。")
     doc = pymupdf.Document(pdfPath)
 
@@ -73,24 +76,28 @@ def readCode(pdfPath: str, numberOfPages: int, startingPoint: Literal["end", "fi
             pix.save(temp_f.name)
             with Image.open(temp_f.name) as temp_pic:
                 bcodes = pyzbar.decode(temp_pic, symbols=[pyzbar.ZBarSymbol.EAN13])
-        # 書籍JANコードは、2つのバーコードで構成されているので、バーコードが二つあるか判定します。
+        
+        # 書籍JANコードがあるか判断します。
+        # 初めに、数で判断します。書籍JANコードは、２つのバーコードのセットであるため、２つあるかで判断します。
         if len(bcodes) <= 1 or len(bcodes) >= 3:
             continue
-        
-        # バーコードが２つあったらJANコードの振り分けをします
-        bookJAN = {}
+        # バーコードが２つあったら、JANコードの振り分けをします。書籍JANコードの接頭辞をもちいて、ISBNと詳細コードに分類します。
         for i in bcodes:
-            if (str(int(i.data)).startswith("978", "979")):
+            if str(int(i.data)).startswith(("978","979")):
                 bookJAN["ISBN"] = str(int(i.data))
             elif str(int(i.data)).startswith("192"):
                 bookJAN["detailedCode"] = str(int(i.data))
             else:
                 pass
-        if bool(bookJAN):
+        # 書籍JANコードがそろったなら、バーコード読み取りをやめます。
+        if len(bookJAN) == 2:
             break
 
     # もし、指定されたページ範囲から書籍JANコードを見つけられなかった場合、そのPDFのpathを返します。
-    return bookJAN if bookJAN else pdfPath
+    if bool(bookJAN):
+        return bookJAN
+    else:
+        return pdfPath
 
 
 def getInfo(ISBN: str) -> dict:
@@ -104,7 +111,7 @@ def getInfo(ISBN: str) -> dict:
     Raises:
         ValueError("国立国会図書館で、指定された ISBN をもつ書籍情報を見つけられませんでした。")
     """
-    if not (str(int(i.data)).startswith("978", "979")):
+    if not ISBN.startswith(("978", "979")):
         raise ValueError(f"あたえられた値が ISBN ではありません。あたえられた値: {ISBN}")
 
     
@@ -118,14 +125,14 @@ def getInfo(ISBN: str) -> dict:
     except Exception as e:
         print(e)
         exit()
-    if not bool(res).text:
+    if len(res.text) == 0:
         raise ValueError("国立国会図書館から、指定された ISBN をもつ書籍情報を見つけられませんでした。")
     
 
     # 帰ってきた XMLデータ の中から、書籍情報を取り出して、dict に変換します。
     root = ET.fromstring(res.text)
     xml_bookInfo = root.find(".//item")
-    if not bool(xml_bookInfo):
+    if len(xml_bookInfo) == 0:
         raise ValueError("国会図書館から帰ってきた XMLデータ の型が不正です。もしかしたら仕様変更があったのかもしれません")
     bookInfo = {}
     bookInfo["ISBN"] = ISBN
@@ -212,17 +219,19 @@ def main():
     errorPathes = []
 
     for i in listUpPathesInFolder(folderPath):
-        bookJan = readCode(i, 5, "end")
-        if isinstance(bookJan, str):
-            errorPathes.append(bookJan)
+        bookJAN = readCode(i, 3, "end")
+        if isinstance(bookJAN, str):
+            errorPathes.append(bookJAN)
             continue
-        bookInfo = getInfo(bookJan["ISBN"])
+        bookInfo = getInfo(bookJAN["ISBN"])
         addDatabase(bookInfo)
         copyAndName(i, yieldFolderPath, bookInfo)
 
     print(f"これらのファイルから書籍JANコードを見つけられませんでした。\n")
     for i in errorPathes:
         print(i)
+    
+    return
 
 if __name__ == "__main__":
     main()
