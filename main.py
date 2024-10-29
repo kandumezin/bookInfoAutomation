@@ -13,7 +13,6 @@ import pandas as pd
 import pymupdf
 
 
-
 def readCode(pdfPath: str, numberOfPages: int, startingPoint: Literal["end", "first"]) -> Union[dict, str]:
     """
     指定されたpathにあるpdfファイルの、指定されたページ範囲から、書籍JANコードを探して読み取ります。
@@ -125,15 +124,13 @@ def getInfo(ISBN: str) -> dict:
     except Exception as e:
         print(e)
         exit()
-    if len(res.text) == 0:
-        raise ValueError("国立国会図書館から、指定された ISBN をもつ書籍情報を見つけられませんでした。")
     
 
     # 帰ってきた XMLデータ の中から、書籍情報を取り出して、dict に変換します。
     root = ET.fromstring(res.text)
     xml_bookInfo = root.find(".//item")
-    if len(xml_bookInfo) == 0:
-        raise ValueError("国会図書館から帰ってきた XMLデータ の型が不正です。もしかしたら仕様変更があったのかもしれません")
+    if xml_bookInfo is None:
+        raise ValueError("国立国会図書館から、指定された ISBN をもつ書籍情報を見つけられませんでした。")
     bookInfo = {}
     bookInfo["ISBN"] = ISBN
     for i in xml_bookInfo:
@@ -227,10 +224,10 @@ def main():
         addDatabase(bookInfo)
         copyAndName(i, yieldFolderPath, bookInfo)
 
-    print(f"これらのファイルから書籍JANコードを見つけられませんでした。\n")
+    print(f"===========\nこれらのファイルから書籍JANコードを見つけられませんでした。\n")
     for i in errorPathes:
         print(i)
-    
+    print("===========")    
     return
 
 if __name__ == "__main__":
