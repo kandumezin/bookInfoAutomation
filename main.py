@@ -5,6 +5,7 @@ import tempfile
 import os
 import shutil
 import xml.etree.ElementTree as ET
+import time
 # 外部モジュール
 from PIL import Image
 import pyzbar.pyzbar as pyzbar
@@ -43,6 +44,7 @@ def readCode(pdfPath: str, numberOfPages: int, startingPoint: Literal["end", "fi
         二段目には、図書分類コードおよび、図書本体価格が内包されています（便宜上、"detailedCode"と表記します）。192から始まる整数の列です。
         接頭辞である978と192を用いて、ISBNとdetailCodeを見分けています。
     """
+    print(f"[def:readCode] {pdfPath} is roaded.")
     # 帰り値の、書籍JANコードを入れる辞書を定義します。
     bookJAN = {}
     
@@ -50,7 +52,7 @@ def readCode(pdfPath: str, numberOfPages: int, startingPoint: Literal["end", "fi
     if os.path.splitext(pdfPath)[1] != ".pdf":
         raise ValueError(f"{os.path.basename(pdfPath)} は、PDF ではありません。")
     doc = pymupdf.Document(pdfPath)
-
+    numberOfPages = doc.page_count
     # 指定されたページ数と、ページ数を数え始める場所から、読み取るページ範囲を作成します。
     # 後ろからページ数を数え、指定されたページ数分のページ範囲を作成
     if startingPoint == "end":
@@ -65,6 +67,7 @@ def readCode(pdfPath: str, numberOfPages: int, startingPoint: Literal["end", "fi
 
     # 指定されたページ範囲から、書籍JANコードを探します。
     # 指定されたページ範囲について、それぞれのページを画像に変換します。その画像からバーコードを読み取ります。
+    print(f"[def:readCode] {pdfPath} 's pictures are stared to be created.")
     for i in pageRange:
         with tempfile.NamedTemporaryFile(suffix=".png") as temp_f:
             zoom_x = 2.0  # horizontal zoom
@@ -91,7 +94,7 @@ def readCode(pdfPath: str, numberOfPages: int, startingPoint: Literal["end", "fi
         # 書籍JANコードがそろったなら、バーコード読み取りをやめます。
         if len(bookJAN) == 2:
             break
-
+    print(f"[def:readCode] {pdfPath} is finished.")
     # もし、指定されたページ範囲から書籍JANコードを見つけられなかった場合、そのPDFのpathを返します。
     if bool(bookJAN):
         return bookJAN
@@ -110,6 +113,7 @@ def getInfo(ISBN: str) -> dict:
     Raises:
         ValueError("国立国会図書館で、指定された ISBN をもつ書籍情報を見つけられませんでした。")
     """
+    print(f"[def:getInfo] {ISBN} is roaded.")
     if not ISBN.startswith(("978", "979")):
         raise ValueError(f"あたえられた値が ISBN ではありません。あたえられた値: {ISBN}")
 
@@ -119,13 +123,14 @@ def getInfo(ISBN: str) -> dict:
     endPointUrl = "https://ndlsearch.ndl.go.jp/api/opensearch?isbn="
     url = endPointUrl + str(ISBN)
     # リクエストします。XMLデータ が帰ってきます。帰ってこなかったら、Error を出します。
+    print(f"[def:getInfo] Started to connect.")
     try:
         res = requests.get(url)
     except Exception as e:
         print(e)
         exit()
     
-
+    print(f"[def:getInfo] Finished getting info")
     # 帰ってきた XMLデータ の中から、書籍情報を取り出して、dict に変換します。
     root = ET.fromstring(res.text)
     xml_bookInfo = root.find(".//item")
@@ -148,6 +153,7 @@ def addDatabase(bookInfo: dict) -> None:
     return:
         None
     """
+    print("[def:addDataBase] is started.")
     # データベースがあるかないか調べます。なかったら新規作成します
     if not os.path.isfile("bookInfoAutomation.csv"):
         df = pd.DataFrame(columns=bookInfo.keys())
@@ -163,6 +169,8 @@ def addDatabase(bookInfo: dict) -> None:
     df_add = pd.DataFrame(bookInfo, index=[0])
     df =pd.concat([df, df_add], ignore_index=True)
     df.to_csv("bookInfoAutomation.csv", encoding="UTF-8")
+
+    print("[def:addDataBase] is ended.")
 
     return
 
@@ -181,6 +189,7 @@ def copyAndName(originFilePath: str, yieldFolderPath: str, bookInfo: dict) -> No
         工事中
 
     """
+    print(f"[def:copyAndName] {originFilePath} is started.")
     # ファイル名を作成します。getCode関数で生成された dict をもちいて、「本のタイトル_ISBN.pdf」
     # となるようなファイル名を作ります。
     title = bookInfo["title{}"]
@@ -194,8 +203,9 @@ def copyAndName(originFilePath: str, yieldFolderPath: str, bookInfo: dict) -> No
     new_name = os.path.join(yieldFolderPath, new_name)
 
     # 名前が付いたファイルをコピーします。
+    print(f"[def:copyAndName] is started to copyed.")
     shutil.copy(originFilePath, new_name)
-
+    print(f"[def:copyAndName] is finished.")
     return
 
 
@@ -211,12 +221,15 @@ def listUpPathesInFolder(folderPath: str):
 
 # main
 def main():
-    folderPath = ".\\test"
-    yieldFolderPath = ".\\yield"
+    folderPath = "C:\\Users\\matsu\\Documents\\電子書籍"
+    yieldFolderPath = "G:\\マイドライブ\\A_documents\\C_個人\\F_電子書籍"
     errorPathes = []
 
     for i in listUpPathesInFolder(folderPath):
-        bookJAN = readCode(i, 3, "end")
+        try:
+            bookJAN = readCode(i, 1, "end")
+        except:
+            continue
         if isinstance(bookJAN, str):
             errorPathes.append(bookJAN)
             continue
