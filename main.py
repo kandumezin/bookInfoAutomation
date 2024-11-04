@@ -211,8 +211,8 @@ def listUpPathesInFolder(folderPath: str):
 
 # main
 def main():
-    folderPath = "C:\\Users\\matsu\\Documents\\電子書籍"
-    yieldFolderPath = "G:\\マイドライブ\\A_documents\\C_個人\\F_電子書籍"
+    folderPath = "type here reactant pdf folder"
+    yieldFolderPath = ""
     errorPathes = []
 
     for i in listUpPathesInFolder(folderPath):
