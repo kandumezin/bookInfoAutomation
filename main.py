@@ -12,6 +12,7 @@ import pyzbar.pyzbar as pyzbar
 import requests
 import pandas as pd
 import pymupdf
+import json
 
 
 def readCode(pdfPath: str, numberOfPages: int, startingPoint: Literal["end", "first"]) -> Union[dict, str]:
@@ -111,10 +112,6 @@ def getInfo(ISBN: str) -> dict:
     Raises:
         ValueError("国立国会図書館で、指定された ISBN をもつ書籍情報を見つけられませんでした。")
     """
-    if not ISBN.startswith(("978", "979")):
-        raise ValueError(f"あたえられた値が ISBN ではありません。あたえられた値: {ISBN}")
-
-    
     # 国立国会図書館OpenSearchのエンドポイントURLと、与えられたISBNをもちいて、
     # HTTPリクエストの クエリ付き URL を作成します
     endPointUrl = "https://ndlsearch.ndl.go.jp/api/opensearch?isbn="
@@ -211,8 +208,10 @@ def listUpPathesInFolder(folderPath: str):
 
 # main
 def main():
-    folderPath = "type here reactant pdf folder"
-    yieldFolderPath = ""
+    with open("config.json") as f:
+        settings = json.load(f)
+    folderPath = str(settings["folderPath"])
+    yieldFolderPath = str(settings["yieldPath"])
     errorPathes = []
 
     for i in listUpPathesInFolder(folderPath):
@@ -243,15 +242,35 @@ def main():
             
         # コピーします
         copyAndName(i, yieldFolderPath, bookInfo)
-
-
         end = time.time()
         print(f"{str(i)}: takes {round(end-start, 3)} seconds.")
 
-    print(f"===========\nこれらのファイルから書籍JANコードを見つけられませんでした。\n")
+    # ISBN を見つけられなかったファイルを挙げて、ISBNを手入力するように誘導します。
+    stillCantFind = []
+    print(f"===========\nこれらのファイルから書籍JANコードを見つけられませんでした。")
     for i in errorPathes:
         print(i)
-    print("===========")    
+    print("===========")
+    # 手入力を要求します
+    for i in errorPathes:
+        print(f"この本のISBNは何ですか？: {i}\nわからない場合は、\"!\"を入力してください")
+        ISBN = input(">>>")
+        if ISBN == "!":
+            stillCantFind.append(i)
+            continue
+        else:
+            pass
+        start = time.time()
+        bookInfo = getInfo(ISBN)
+        addDatabase(bookInfo)
+        copyAndName(i, yieldFolderPath, bookInfo)
+        end = time.time()
+        print(f"{str(i)}: takes {round(end-start, 3)} seconds.")
+
+    print(f"===========\nこれらのファイルから書籍JANコードを見つけられませんでした。")
+    for i in stillCantFind:
+        print(i)
+    print("===========")
     return
 
 if __name__ == "__main__":
