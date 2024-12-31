@@ -12,7 +12,7 @@ import pyzbar.pyzbar as pyzbar
 import requests
 import pandas as pd
 import pymupdf
-import json
+import configparser
 
 
 def readCode(pdfPath: str, numberOfPages: int, startingPoint: Literal["end", "first"]) -> Union[dict, str]:
@@ -28,12 +28,12 @@ def readCode(pdfPath: str, numberOfPages: int, startingPoint: Literal["end", "fi
             "first": 先頭のページから書籍JANコードを探します
 
     Returns:
-
         dict: ISBNと詳細コードを格納した辞書。フォーマットは以下の通り:
             {
                 "ISBN": str,         # ISBNコード
                 "detailedCode": str   # 図書分類コードおよび図書本体価格を含むコード
             }
+        str: バーコードを見つけられなかった pdf の path
     Raises:
         ValueError("{pdfPath}は、PDFではありません")
             与えられたファイルが、PDF ではないときに表示されます。
@@ -45,10 +45,8 @@ def readCode(pdfPath: str, numberOfPages: int, startingPoint: Literal["end", "fi
         二段目には、図書分類コードおよび、図書本体価格が内包されています（便宜上、"detailedCode"と表記します）。192から始まる整数の列です。
         接頭辞である978と192を用いて、ISBNとdetailCodeを見分けています。
     """
-    # 帰り値の、書籍JANコードを入れる辞書を定義します。
     bookJAN = {}
-    
-    # 与えられた　Path から、PDF を読み込みます。
+
     if os.path.splitext(pdfPath)[1] != ".pdf":
         raise ValueError(f"{os.path.basename(pdfPath)} は、PDF ではありません。")
     doc = pymupdf.Document(pdfPath)
@@ -58,7 +56,6 @@ def readCode(pdfPath: str, numberOfPages: int, startingPoint: Literal["end", "fi
     if startingPoint == "end":
         numberOfPages = -1 * numberOfPages
         pageRange = range(numberOfPages,0)
-
     # 前からページ数を数え、指定されたページ数分のページ範囲を作成
     elif startingPoint == "first":
         pageRange = range(0, numberOfPages)
@@ -113,16 +110,11 @@ def getInfo(ISBN: str) -> dict:
         ValueError("国立国会図書館で、指定された ISBN をもつ書籍情報を見つけられませんでした。")
     """
     # 国立国会図書館OpenSearchのエンドポイントURLと、与えられたISBNをもちいて、
-    # HTTPリクエストの クエリ付き URL を作成します
+    # HTTPリクエストします
     endPointUrl = "https://ndlsearch.ndl.go.jp/api/opensearch?isbn="
     url = endPointUrl + str(ISBN)
-    # リクエストします。XMLデータ が帰ってきます。帰ってこなかったら、Error を出します。
-    try:
-        res = requests.get(url)
-    except Exception as e:
-        print(e)
-        exit()
-    
+    res = requests.get(url)
+
     # 帰ってきた XMLデータ の中から、書籍情報を取り出して、dict に変換します。
     root = ET.fromstring(res.text)
     xml_bookInfo = root.find(".//item")
@@ -145,23 +137,20 @@ def addDatabase(bookInfo: dict) -> None:
     return:
         None
     """
-    # データベースがあるかないか調べます。なかったら新規作成します
     if not os.path.isfile("bookInfoAutomation.csv"):
         df = pd.DataFrame(columns=bookInfo.keys())
         df.to_csv("bookInfoAutomation.csv", encoding="UTF-8")
     
     # データベースを読み込んで、同一の ISBN をもつ行があるか検索します。そしてあった（重複）なら、データを追加しません
     df = pd.read_csv("bookInfoAutomation.csv", index_col=0)
-    result = (df['ISBN'] == int(bookInfo["ISBN"]))
+    result = (df["ISBN"] == int(bookInfo["ISBN"]))
     if result.sum().sum() > 0:
-        raise ValueError("すでに登録されています")
+        print("すでに登録されています")
     
     # 重複していなければ、データベースにデータを追加します
     df_add = pd.DataFrame(bookInfo, index=[0])
-    df =pd.concat([df, df_add], ignore_index=True)
+    df = pd.concat([df, df_add], ignore_index=True)
     df.to_csv("bookInfoAutomation.csv", encoding="UTF-8")
-
-
     return
 
 
@@ -175,16 +164,20 @@ def copyAndName(originFilePath: str, yieldFolderPath: str, bookInfo: dict) -> No
         bookInfo(dict): getInfo で取得した本の情報。IBSNと本のタイトルが含まれています。
     Returns:
         None: ファイルをコピーしておわりです。
-    Raises:
-        工事中
-
     """
-    # ファイル名を作成します。getCode関数で生成された dict をもちいて、「本のタイトル_ISBN.pdf」
+    # ファイル名を作成します。getCode関数で生成された dict をもちいて、「{本のタイトル}_{ISBN}.pdf」
     # となるようなファイル名を作ります。
     title = bookInfo["title{}"]
     ISBN = bookInfo["ISBN"]
-    f_name = title + "_" + ISBN + ".pdf"
+    book_desprictions = bookInfo["description{}"][3:].split(",")
 
+    try:
+        book_issue_num = str(int(book_desprictions[0]))
+        book_issue_num = book_issue_num + "巻_"
+    except:
+        book_issue_num = ""
+
+    f_name = title + "_" + book_issue_num + ISBN + ".pdf"
 
     # 作ったファイル名が windows の禁止文字を含んでいないか確認し、禁止文字を置き換えます。
     replace_with = "⦸"
@@ -201,29 +194,30 @@ def listUpPathesInFolder(folderPath: str):
     yieldPathes = []
     for i in pathes:
         yieldPathes.append(os.path.join(folderPath, i))
-    
     return yieldPathes
 
 
 
 # main
 def main():
-    with open("config.json") as f:
-        settings = json.load(f)
-    folderPath = str(settings["folderPath"])
-    yieldFolderPath = str(settings["yieldPath"])
+    # config.ini から、処理前のPDF がある Path と、処理後のPDFを入れる Path を読み込みます。
+    config_ini = configparser.ConfigParser()
+    config_ini.read("config.ini", encoding="utf-8")
+    beforeProcessing = config_ini["DEFAULT"]["beforeProcessing"]
+    afterProcessing = config_ini["DEFAULT"]["afterProcessing"]
+    # 処理できなかった PDF の Path を記録する List です
     errorPathes = []
 
-    for i in listUpPathesInFolder(folderPath):
+    # beforeProcessig 内の PDF ファイルについて処理を繰り返します
+    files = os.listdir(beforeProcessing)
+    pdfFiles = [os.path.join(beforeProcessing, i) for i in files if i.endswith(".pdf")]
+    for i in pdfFiles:
         start = time.time()
-
         # 書籍JANコードを読み込みます。
-        try:
-            bookJAN = readCode(i, 3, "end")
-        except:
-            continue
+        bookJAN = readCode(i, 3, "end")
 
         # readCode が、読み込めたかどうか確認します。
+        # 
         if isinstance(bookJAN, str):
             errorPathes.append(bookJAN)
             continue
@@ -233,7 +227,7 @@ def main():
             bookInfo = getInfo(bookJAN["ISBN"])
         except:
             continue
-        
+
         # データベースに追加します
         try:
             addDatabase(bookInfo)
@@ -241,9 +235,10 @@ def main():
             continue
             
         # コピーします
-        copyAndName(i, yieldFolderPath, bookInfo)
+        copyAndName(i, afterProcessing, bookInfo)
         end = time.time()
         print(f"{str(i)}: takes {round(end-start, 3)} seconds.")
+
 
     # ISBN を見つけられなかったファイルを挙げて、ISBNを手入力するように誘導します。
     stillCantFind = []
@@ -263,11 +258,11 @@ def main():
         start = time.time()
         bookInfo = getInfo(ISBN)
         addDatabase(bookInfo)
-        copyAndName(i, yieldFolderPath, bookInfo)
+        copyAndName(i, afterProcessing, bookInfo)
         end = time.time()
         print(f"{str(i)}: takes {round(end-start, 3)} seconds.")
 
-    print(f"===========\nこれらのファイルから書籍JANコードを見つけられませんでした。")
+    print(f"===========\nこれらのファイルから書籍情報を見つけられませんでした。")
     for i in stillCantFind:
         print(i)
     print("===========")
